@@ -12,13 +12,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.enmasse.controller.api.AuthInterceptor;
-import io.enmasse.controller.api.RbacSecurityContext;
-import io.enmasse.controller.api.ResourceVerb;
+import io.enmasse.api.auth.AuthInterceptor;
+import io.enmasse.api.auth.RbacSecurityContext;
+import io.enmasse.api.auth.ResourceVerb;
 import io.enmasse.controller.api.v1.http.HttpHealthService;
 import io.enmasse.controller.common.Kubernetes;
-import io.enmasse.controller.common.SubjectAccessReview;
-import io.enmasse.controller.common.TokenReview;
+import io.enmasse.api.auth.SubjectAccessReview;
+import io.enmasse.api.auth.TokenReview;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;

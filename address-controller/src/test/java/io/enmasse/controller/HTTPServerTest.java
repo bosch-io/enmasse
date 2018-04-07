@@ -7,8 +7,8 @@ package io.enmasse.controller;
 
 import io.enmasse.address.model.*;
 import io.enmasse.controller.common.Kubernetes;
-import io.enmasse.controller.common.SubjectAccessReview;
-import io.enmasse.controller.common.TokenReview;
+import io.enmasse.api.auth.SubjectAccessReview;
+import io.enmasse.api.auth.TokenReview;
 import io.enmasse.k8s.api.TestAddressSpaceApi;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;

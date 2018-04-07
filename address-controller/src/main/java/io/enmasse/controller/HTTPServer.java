@@ -5,22 +5,19 @@
 
 package io.enmasse.controller;
 
-import io.enmasse.controller.api.JacksonConfig;
-import io.enmasse.controller.api.AuthInterceptor;
-import io.enmasse.controller.api.osb.v2.ServiceMapping;
-import io.enmasse.controller.api.osb.v2.bind.OSBBindingService;
-import io.enmasse.controller.api.osb.v2.catalog.OSBCatalogService;
-import io.enmasse.controller.api.osb.v2.lastoperation.OSBLastOperationService;
-import io.enmasse.controller.api.osb.v2.provision.OSBProvisioningService;
+import io.enmasse.api.auth.AllowAllAuthInterceptor;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.common.JacksonConfig;
+import io.enmasse.api.auth.AuthInterceptor;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.controller.api.v1.http.SwaggerSpecEndpoint;
 import io.enmasse.controller.api.v1.http.HttpAddressService;
 import io.enmasse.controller.api.v1.http.HttpAddressSpaceService;
 import io.enmasse.controller.api.v1.http.HttpHealthService;
 import io.enmasse.controller.api.v1.http.HttpSchemaService;
 import io.enmasse.controller.api.v1.http.*;
-import io.enmasse.controller.api.DefaultExceptionMapper;
+import io.enmasse.api.common.DefaultExceptionMapper;
 import io.enmasse.controller.common.AuthenticationServiceResolverFactory;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
@@ -45,7 +42,7 @@ public class HTTPServer extends AbstractVerticle {
     private final AddressSpaceApi addressSpaceApi;
     private final SchemaProvider schemaProvider;
     private final String certDir;
-    private final Kubernetes kubernetes;
+    private final AuthApi authApi;
     private final boolean enableRbac;
     private final AuthenticationServiceResolverFactory authenticationResolverFactory;
 
@@ -53,11 +50,11 @@ public class HTTPServer extends AbstractVerticle {
     private HttpServer httpsServer;
 
     public HTTPServer(AddressSpaceApi addressSpaceApi, SchemaProvider schemaProvider, String certDir,
-                      Kubernetes kubernetes, boolean enableRbac, AuthenticationServiceResolverFactory resolverFactory) {
+                      AuthApi authApi, boolean enableRbac, AuthenticationServiceResolverFactory resolverFactory) {
         this.addressSpaceApi = addressSpaceApi;
         this.schemaProvider = schemaProvider;
         this.certDir = certDir;
-        this.kubernetes = kubernetes;
+        this.authApi = authApi;
         this.enableRbac = enableRbac;
         this.authenticationResolverFactory = resolverFactory;
     }
@@ -72,7 +69,7 @@ public class HTTPServer extends AbstractVerticle {
 
         if (enableRbac) {
             log.info("Enabling RBAC for REST API");
-            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(kubernetes));
+            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi));
         } else {
             log.info("Disabling authentication and authorization for REST API");
             deployment.getProviderFactory().registerProviderInstance(new AllowAllAuthInterceptor());
@@ -81,16 +78,11 @@ public class HTTPServer extends AbstractVerticle {
         deployment.getRegistry().addSingletonResource(new SwaggerSpecEndpoint());
         deployment.getRegistry().addSingletonResource(new HttpAddressService(addressSpaceApi, schemaProvider));
         deployment.getRegistry().addSingletonResource(new HttpSchemaService(schemaProvider));
-        deployment.getRegistry().addSingletonResource(new HttpAddressSpaceService(addressSpaceApi, schemaProvider, kubernetes.getNamespace()));
+        deployment.getRegistry().addSingletonResource(new HttpAddressSpaceService(addressSpaceApi, schemaProvider, authApi.getNamespace()));
         deployment.getRegistry().addSingletonResource(new HttpHealthService());
         deployment.getRegistry().addSingletonResource(new HttpV1RootService());
         deployment.getRegistry().addSingletonResource(new HttpRootService());
         deployment.getRegistry().addSingletonResource(new HttpAddressRootService(addressSpaceApi));
-        ServiceMapping serviceMapping = new ServiceMapping(schemaProvider.getSchema());
-        deployment.getRegistry().addSingletonResource(new OSBCatalogService(addressSpaceApi, kubernetes, serviceMapping));
-        deployment.getRegistry().addSingletonResource(new OSBProvisioningService(addressSpaceApi, kubernetes, serviceMapping));
-        deployment.getRegistry().addSingletonResource(new OSBBindingService(addressSpaceApi, kubernetes, serviceMapping, authenticationResolverFactory));
-        deployment.getRegistry().addSingletonResource(new OSBLastOperationService(addressSpaceApi, kubernetes, serviceMapping));
 
         VertxRequestHandler requestHandler = new VertxRequestHandler(vertx, deployment);
 

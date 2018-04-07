@@ -8,9 +8,9 @@ package io.enmasse.osb;
 import io.enmasse.address.model.AuthenticationServiceResolver;
 import io.enmasse.address.model.AuthenticationServiceType;
 import io.enmasse.address.model.CertSpec;
+import io.enmasse.api.common.CachingSchemaProvider;
 import io.enmasse.k8s.api.*;
 import io.fabric8.kubernetes.api.model.ConfigMap;
-import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.openshift.client.DefaultOpenShiftClient;
 import io.fabric8.openshift.client.NamespacedOpenShiftClient;
 import io.vertx.core.*;
@@ -23,47 +23,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class Main extends AbstractVerticle {
-    private static final Logger log = LoggerFactory.getLogger(Main.class.getName());
+public class ServiceBroker extends AbstractVerticle {
+    private static final Logger log = LoggerFactory.getLogger(ServiceBroker.class.getName());
     private final NamespacedOpenShiftClient controllerClient;
-    private final ControllerOptions options;
-    private final Kubernetes kubernetes;
 
-    private Main(ControllerOptions options) {
-        this.controllerClient = new DefaultOpenShiftClient(new ConfigBuilder()
-                .withMasterUrl(options.getMasterUrl())
-                .withOauthToken(options.getToken())
-                .withNamespace(options.getNamespace())
-                .build());
-        this.options = options;
-        this.kubernetes = new KubernetesHelper(options.getNamespace(), controllerClient, options.getToken(), options.getEnvironment(), options.getTemplateDir(), options.getAddressControllerSa(), options.getAddressSpaceAdminSa(), options.isEnableRbac(), options.getImpersonateUser());
+    private ServiceBroker(ServiceBrokerOptions options) {
+        this.controllerClient = new DefaultOpenShiftClient();
     }
 
     @Override
     public void start(Future<Void> startPromise) throws Exception {
-        SchemaApi schemaApi = new ConfigMapSchemaApi(controllerClient, options.getNamespace());
+        SchemaApi schemaApi = new ConfigMapSchemaApi(controllerClient, controllerClient.getNamespace());
         CachingSchemaProvider schemaProvider = new CachingSchemaProvider(schemaApi);
         schemaApi.watchSchema(schemaProvider, options.getResyncInterval());
 
         AddressSpaceApi addressSpaceApi = new ConfigMapAddressSpaceApi(controllerClient);
-        EventLogger eventLogger = options.isEnableEventLogger() ? new KubeEventLogger(controllerClient, controllerClient.getNamespace(), Clock.systemUTC(), "enmasse-controller")
-                : new LogEventLogger();
 
-        CertManager certManager = OpenSSLCertManager.create(controllerClient);
-        AuthenticationServiceResolverFactory resolverFactory = createResolverFactory(options);
-        CertProviderFactory certProviderFactory = createCertProviderFactory(options, certManager);
-        AuthController authController = new AuthController(certManager, eventLogger, certProviderFactory);
-
-        InfraResourceFactory infraResourceFactory = new TemplateInfraResourceFactory(kubernetes, schemaProvider, resolverFactory, authController.getDefaultCertProvider());
-
-        ControllerChain controllerChain = new ControllerChain(kubernetes, addressSpaceApi, schemaProvider, eventLogger, options.getRecheckInterval(), options.getResyncInterval());
-        controllerChain.addController(new CreateController(kubernetes, schemaProvider, infraResourceFactory, kubernetes.getNamespace(), eventLogger));
-        controllerChain.addController(new StatusController(kubernetes, infraResourceFactory));
-        controllerChain.addController(new EndpointController(controllerClient));
-        controllerChain.addController(authController);
-
+        vertx.deployVerticle(new HTTPServer(addressSpaceApi, serviceMapping, certDir, auth));
         deployVerticles(startPromise,
-                new Deployment(controllerChain),
                 new Deployment(new HTTPServer(addressSpaceApi, schemaProvider, options.getCertDir(), kubernetes, kubernetes.isRBACEnabled(), resolverFactory), new DeploymentOptions().setWorker(true)));
     }
 
@@ -157,7 +134,7 @@ public class Main extends AbstractVerticle {
     public static void main(String args[]) {
         try {
             Vertx vertx = Vertx.vertx();
-            vertx.deployVerticle(new Main(ControllerOptions.fromEnv(System.getenv())));
+            vertx.deployVerticle(new ServiceBroker(ControllerOptions.fromEnv(System.getenv())));
         } catch (IllegalArgumentException e) {
             System.out.println(String.format("Unable to parse arguments: %s", e.getMessage()));
             System.exit(1);

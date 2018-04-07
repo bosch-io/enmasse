@@ -8,12 +8,13 @@ import java.util.*;
 
 import io.enmasse.address.model.AuthenticationService;
 import io.enmasse.address.model.AuthenticationServiceType;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.auth.RbacSecurityContext;
+import io.enmasse.api.auth.ResourceVerb;
 import io.enmasse.api.common.Exceptions;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.config.LabelKeys;
-import io.enmasse.controller.api.RbacSecurityContext;
-import io.enmasse.controller.api.ResourceVerb;
 import io.enmasse.address.model.AddressSpace;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,22 +28,22 @@ public abstract class OSBServiceBase {
     protected final Logger log = LoggerFactory.getLogger(getClass().getName());
 
     private final AddressSpaceApi addressSpaceApi;
-    private final ServiceMapping serviceMapping;
-    private final String namespace;
+    private final AuthApi authApi;
+    private final SchemaProvider schemaProvider;
 
-    public OSBServiceBase(AddressSpaceApi addressSpaceApi, String namespace, ServiceMapping serviceMapping) {
+    public OSBServiceBase(AddressSpaceApi addressSpaceApi, AuthApi authApi, SchemaProvider schemaProvider) {
         this.addressSpaceApi = addressSpaceApi;
-        this.namespace = namespace;
-        this.serviceMapping = serviceMapping;
+        this.authApi = authApi;
+        this.schemaProvider = schemaProvider;
 
     }
 
     protected ServiceMapping getServiceMapping() {
-        return serviceMapping;
+        return new ServiceMapping(schemaProvider.getSchema());
     }
 
     protected void verifyAuthorized(SecurityContext securityContext, ResourceVerb verb) {
-        if (!securityContext.isUserInRole(RbacSecurityContext.rbacToRole(kubernetes.getNamespace(), verb))) {
+        if (!securityContext.isUserInRole(RbacSecurityContext.rbacToRole(authApi.getNamespace(), verb))) {
             throw Exceptions.notAuthorizedException();
         }
     }

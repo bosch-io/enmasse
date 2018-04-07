@@ -6,6 +6,8 @@
 package io.enmasse.osb;
 
 import io.enmasse.api.auth.AllowAllAuthInterceptor;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.controller.api.AuthInterceptor;
 import io.enmasse.controller.api.DefaultExceptionMapper;
 import io.enmasse.controller.api.JacksonConfig;
@@ -40,21 +42,21 @@ public class HTTPServer extends AbstractVerticle {
     public static final int SECURE_PORT = 8081;
     private static final Logger log = LoggerFactory.getLogger(HTTPServer.class.getName());
     private final AddressSpaceApi addressSpaceApi;
-    private final
+    private final AuthApi authApi;
     private final String certDir;
     private final boolean enableRbac;
+    private final SchemaProvider schemaProvider;
 
-    private HttpServer httpServer;
     private HttpServer httpsServer;
+    private HttpServer httpServer;
 
-    public HTTPServer(AddressSpaceApi addressSpaceApi, ServiceMapping serviceMapping, String certDir,
-                      Kubernetes kubernetes, boolean enableRbac, AuthenticationServiceResolverFactory resolverFactory) {
+    public HTTPServer(AddressSpaceApi addressSpaceApi, SchemaProvider schemaProvider,
+                      AuthApi authApi, String certDir, boolean enableRbac) {
         this.addressSpaceApi = addressSpaceApi;
         this.schemaProvider = schemaProvider;
         this.certDir = certDir;
-        this.kubernetes = kubernetes;
+        this.authApi = authApi;
         this.enableRbac = enableRbac;
-        this.authenticationResolverFactory = resolverFactory;
     }
 
     @Override
@@ -67,17 +69,16 @@ public class HTTPServer extends AbstractVerticle {
 
         if (enableRbac) {
             log.info("Enabling RBAC for REST API");
-            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(kubernetes));
+            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi));
         } else {
             log.info("Disabling authentication and authorization for REST API");
             deployment.getProviderFactory().registerProviderInstance(new AllowAllAuthInterceptor());
         }
 
-        ServiceMapping serviceMapping = new ServiceMapping(schemaProvider.getSchema());
-        deployment.getRegistry().addSingletonResource(new OSBCatalogService(addressSpaceApi, kubernetes, serviceMapping));
-        deployment.getRegistry().addSingletonResource(new OSBProvisioningService(addressSpaceApi, kubernetes, serviceMapping));
-        deployment.getRegistry().addSingletonResource(new OSBBindingService(addressSpaceApi, kubernetes, serviceMapping, authenticationResolverFactory));
-        deployment.getRegistry().addSingletonResource(new OSBLastOperationService(addressSpaceApi, kubernetes, serviceMapping));
+        deployment.getRegistry().addSingletonResource(new OSBCatalogService(addressSpaceApi, authApi, schemaProvider));
+        deployment.getRegistry().addSingletonResource(new OSBProvisioningService(addressSpaceApi, authApi, schemaProvider));
+        deployment.getRegistry().addSingletonResource(new OSBBindingService(addressSpaceApi, authApi, schemaProvider));
+        deployment.getRegistry().addSingletonResource(new OSBLastOperationService(addressSpaceApi, authApi, schemaProvider));
 
         VertxRequestHandler requestHandler = new VertxRequestHandler(vertx, deployment);
 

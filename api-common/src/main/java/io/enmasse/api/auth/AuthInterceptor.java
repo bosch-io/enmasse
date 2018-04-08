@@ -15,14 +15,16 @@ public class AuthInterceptor implements ContainerRequestFilter {
 
     public static final String BEARER_PREFIX = "Bearer ";
     private final AuthApi authApi;
+    private final String healthPath;
 
-    public AuthInterceptor(AuthApi authApi) {
+    public AuthInterceptor(AuthApi authApi, String healthPath) {
         this.authApi = authApi;
+        this.healthPath = healthPath;
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext) throws IOException {
-        if (requestContext.getUriInfo().getPath().equals("/apis/enmasse.io/v1/health")) {
+        if (requestContext.getUriInfo().getPath().equals(healthPath)) {
             return;
         }
         boolean isAuthenticated = false;

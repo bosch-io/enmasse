@@ -7,19 +7,14 @@ package io.enmasse.osb;
 
 import io.enmasse.api.auth.AllowAllAuthInterceptor;
 import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.auth.AuthInterceptor;
+import io.enmasse.api.common.DefaultExceptionMapper;
+import io.enmasse.api.common.JacksonConfig;
 import io.enmasse.api.common.SchemaProvider;
-import io.enmasse.controller.api.AuthInterceptor;
-import io.enmasse.controller.api.DefaultExceptionMapper;
-import io.enmasse.controller.api.JacksonConfig;
-import io.enmasse.controller.api.osb.v2.ServiceMapping;
-import io.enmasse.osb.api.ServiceMapping;
 import io.enmasse.osb.api.bind.OSBBindingService;
 import io.enmasse.osb.api.catalog.OSBCatalogService;
 import io.enmasse.osb.api.lastoperation.OSBLastOperationService;
 import io.enmasse.osb.api.provision.OSBProvisioningService;
-import io.enmasse.controller.api.v1.http.*;
-import io.enmasse.controller.common.AuthenticationServiceResolverFactory;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
@@ -46,17 +41,24 @@ public class HTTPServer extends AbstractVerticle {
     private final String certDir;
     private final boolean enableRbac;
     private final SchemaProvider schemaProvider;
+    private final String keycloakUrl;
+    private final String keycloakAdminUser;
+    private final String keycloakAdminPassword;
 
     private HttpServer httpsServer;
     private HttpServer httpServer;
 
     public HTTPServer(AddressSpaceApi addressSpaceApi, SchemaProvider schemaProvider,
-                      AuthApi authApi, String certDir, boolean enableRbac) {
+                      AuthApi authApi, String certDir, boolean enableRbac,
+                      String keycloakUrl, String keycloakAdminUser, String keycloakAdminPassword) {
         this.addressSpaceApi = addressSpaceApi;
         this.schemaProvider = schemaProvider;
         this.certDir = certDir;
         this.authApi = authApi;
         this.enableRbac = enableRbac;
+        this.keycloakUrl = keycloakUrl;
+        this.keycloakAdminUser = keycloakAdminUser;
+        this.keycloakAdminPassword = keycloakAdminPassword;
     }
 
     @Override
@@ -69,15 +71,16 @@ public class HTTPServer extends AbstractVerticle {
 
         if (enableRbac) {
             log.info("Enabling RBAC for REST API");
-            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi));
+            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi, HttpHealthService.BASE_URI));
         } else {
             log.info("Disabling authentication and authorization for REST API");
             deployment.getProviderFactory().registerProviderInstance(new AllowAllAuthInterceptor());
         }
 
+        deployment.getRegistry().addSingletonResource(new HttpHealthService());
         deployment.getRegistry().addSingletonResource(new OSBCatalogService(addressSpaceApi, authApi, schemaProvider));
         deployment.getRegistry().addSingletonResource(new OSBProvisioningService(addressSpaceApi, authApi, schemaProvider));
-        deployment.getRegistry().addSingletonResource(new OSBBindingService(addressSpaceApi, authApi, schemaProvider));
+        deployment.getRegistry().addSingletonResource(new OSBBindingService(addressSpaceApi, authApi, schemaProvider, keycloakUrl, keycloakAdminUser, keycloakAdminPassword));
         deployment.getRegistry().addSingletonResource(new OSBLastOperationService(addressSpaceApi, authApi, schemaProvider));
 
         VertxRequestHandler requestHandler = new VertxRequestHandler(vertx, deployment);

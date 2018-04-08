@@ -42,6 +42,10 @@ public abstract class OSBServiceBase {
         return new ServiceMapping(schemaProvider.getSchema());
     }
 
+    protected AuthApi getAuthApi() {
+        return authApi;
+    }
+
     protected void verifyAuthorized(SecurityContext securityContext, ResourceVerb verb) {
         if (!securityContext.isUserInRole(RbacSecurityContext.rbacToRole(authApi.getNamespace(), verb))) {
             throw Exceptions.notAuthorizedException();

@@ -2,7 +2,7 @@
  * Copyright 2018, EnMasse authors.
  * License: Apache License 2.0 (see the file LICENSE or http://apache.org/licenses/LICENSE-2.0.html).
  */
-package io.enmasse.controller.auth;
+package io.enmasse.api.auth;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
@@ -12,13 +12,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.enmasse.api.auth.AuthInterceptor;
-import io.enmasse.api.auth.RbacSecurityContext;
-import io.enmasse.api.auth.ResourceVerb;
-import io.enmasse.controller.api.v1.http.HttpHealthService;
-import io.enmasse.controller.common.Kubernetes;
-import io.enmasse.api.auth.SubjectAccessReview;
-import io.enmasse.api.auth.TokenReview;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,14 +34,14 @@ public class AuthInterceptorTest {
     private AuthInterceptor handler;
     private ContainerRequestContext mockRequestContext;
     private UriInfo mockUriInfo;
-    private Kubernetes mockKubernetes;
+    private AuthApi mockAuthApi;
 
     @Before
     public void setUp() throws IOException {
         tokenFile = File.createTempFile("token", "");
-        mockKubernetes = mock(Kubernetes.class);
-        when(mockKubernetes.getNamespace()).thenReturn("myspace");
-        handler = new AuthInterceptor(mockKubernetes);
+        mockAuthApi = mock(AuthApi.class);
+        when(mockAuthApi.getNamespace()).thenReturn("myspace");
+        handler = new AuthInterceptor(mockAuthApi, "/healthz");
         mockRequestContext = mock(ContainerRequestContext.class);
 
         mockUriInfo = mock(UriInfo.class);
@@ -82,7 +75,7 @@ public class AuthInterceptorTest {
     @Test
     public void testInvalidToken() throws IOException {
         TokenReview returnedTokenReview = new TokenReview(null, false);
-        when(mockKubernetes.performTokenReview("invalid_token")).thenReturn(returnedTokenReview);
+        when(mockAuthApi.performTokenReview("invalid_token")).thenReturn(returnedTokenReview);
         when(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer invalid_token");
         assertExceptionThrown(mockRequestContext);
     }
@@ -90,9 +83,9 @@ public class AuthInterceptorTest {
     @Test
     public void testValidTokenButNotAuthorized() throws IOException {
         TokenReview returnedTokenReview = new TokenReview("foo", true);
-        when(mockKubernetes.performTokenReview("valid_token")).thenReturn(returnedTokenReview);
+        when(mockAuthApi.performTokenReview("valid_token")).thenReturn(returnedTokenReview);
         SubjectAccessReview returnedSubjectAccessReview = new SubjectAccessReview("foo", false);
-        when(mockKubernetes.performSubjectAccessReview(eq("foo"), any(), eq("create"))).thenReturn(returnedSubjectAccessReview);
+        when(mockAuthApi.performSubjectAccessReview(eq("foo"), any(), eq("create"))).thenReturn(returnedSubjectAccessReview);
         when(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer valid_token");
         when(mockRequestContext.getMethod()).thenReturn(HttpMethod.POST);
 
@@ -110,16 +103,16 @@ public class AuthInterceptorTest {
 
     @Test
     public void testHealthAuthz() throws IOException {
-        when(mockUriInfo.getPath()).thenReturn(HttpHealthService.BASE_URI);
+        when(mockUriInfo.getPath()).thenReturn("/healthz");
         handler.filter(mockRequestContext);
     }
 
     @Test
     public void testAuthorized() throws IOException {
         TokenReview returnedTokenReview = new TokenReview("foo", true);
-        when(mockKubernetes.performTokenReview("valid_token")).thenReturn(returnedTokenReview);
+        when(mockAuthApi.performTokenReview("valid_token")).thenReturn(returnedTokenReview);
         SubjectAccessReview returnedSubjectAccessReview = new SubjectAccessReview("foo", true);
-        when(mockKubernetes.performSubjectAccessReview(eq("foo"), any(), eq("create"))).thenReturn(returnedSubjectAccessReview);
+        when(mockAuthApi.performSubjectAccessReview(eq("foo"), any(), eq("create"))).thenReturn(returnedSubjectAccessReview);
         when(mockRequestContext.getHeaderString(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer valid_token");
         when(mockRequestContext.getMethod()).thenReturn(HttpMethod.POST);
 

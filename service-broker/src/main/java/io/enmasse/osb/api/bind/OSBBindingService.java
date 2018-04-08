@@ -5,18 +5,14 @@
 package io.enmasse.osb.api.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.enmasse.address.model.AuthenticationServiceResolver;
 import io.enmasse.api.auth.AuthApi;
-import io.enmasse.controller.api.ResourceVerb;
+import io.enmasse.api.auth.ResourceVerb;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.osb.api.EmptyResponse;
 import io.enmasse.api.common.Exceptions;
 import io.enmasse.osb.api.OSBServiceBase;
 import io.enmasse.address.model.AddressSpace;
-import io.enmasse.osb.api.ServiceMapping;
-import io.enmasse.controller.common.AuthenticationServiceResolverFactory;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
-import io.fabric8.kubernetes.api.model.Secret;
 
 import javax.net.ssl.*;
 import javax.ws.rs.*;
@@ -43,12 +39,13 @@ public class OSBBindingService extends OSBServiceBase {
     private final String keycloakUrl;
     private final String keycloakAdminUser;
     private final String keycloakAdminPassword;
-    private final AuthApi authApi;
     private final Random random = new SecureRandom();
 
-    public OSBBindingService(AddressSpaceApi addressSpaceApi, String namespace, ServiceMapping serviceMapping, String keycloakUrl) {
-        super(addressSpaceApi, namespace, serviceMapping);
+    public OSBBindingService(AddressSpaceApi addressSpaceApi, AuthApi authApi, SchemaProvider schemaProvider, String keycloakUrl, String keycloakAdminUser, String keycloakAdminPassword) {
+        super(addressSpaceApi, authApi, schemaProvider);
         this.keycloakUrl = keycloakUrl;
+        this.keycloakAdminUser = keycloakAdminUser;
+        this.keycloakAdminPassword = keycloakAdminPassword;
     }
 
     @PUT
@@ -131,7 +128,7 @@ public class OSBBindingService extends OSBServiceBase {
                 credentials.put("host", String.format("%s.%s.svc", e.getService(), addressSpace.getNamespace()));
                 credentials.put("port", "5671");
                 e.getCertSpec().ifPresent(certSpec -> {
-                    String cert = authApi.getCert(certSpec.getSecretName(), addressSpace.getNamespace());
+                    String cert = getAuthApi().getCert(certSpec.getSecretName(), addressSpace.getNamespace());
                     credentials.put("certificate.pem", cert);
                     /*try {
                         StringWriter keyStoreAsString = new StringWriter();
@@ -375,7 +372,7 @@ public class OSBBindingService extends OSBServiceBase {
 
     private SSLSocketFactory getSslSocketFactoryForAuthService() throws IOException, GeneralSecurityException {
         String secretName = "standard-authservice-cert";
-        String cert = authApi.getCert(secretName, authApi.getNamespace());
+        String cert = getAuthApi().getCert(secretName, getAuthApi().getNamespace());
         KeyStore inMemoryKeyStore = convertCertToKeyStore(cert);
         SSLContext sc = SSLContext.getInstance("TLS");
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());

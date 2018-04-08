@@ -44,19 +44,17 @@ public class HTTPServer extends AbstractVerticle {
     private final String certDir;
     private final AuthApi authApi;
     private final boolean enableRbac;
-    private final AuthenticationServiceResolverFactory authenticationResolverFactory;
 
     private HttpServer httpServer;
     private HttpServer httpsServer;
 
     public HTTPServer(AddressSpaceApi addressSpaceApi, SchemaProvider schemaProvider, String certDir,
-                      AuthApi authApi, boolean enableRbac, AuthenticationServiceResolverFactory resolverFactory) {
+                      AuthApi authApi, boolean enableRbac) {
         this.addressSpaceApi = addressSpaceApi;
         this.schemaProvider = schemaProvider;
         this.certDir = certDir;
         this.authApi = authApi;
         this.enableRbac = enableRbac;
-        this.authenticationResolverFactory = resolverFactory;
     }
 
     @Override
@@ -69,7 +67,7 @@ public class HTTPServer extends AbstractVerticle {
 
         if (enableRbac) {
             log.info("Enabling RBAC for REST API");
-            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi));
+            deployment.getProviderFactory().registerProviderInstance(new AuthInterceptor(authApi, HttpHealthService.BASE_URI));
         } else {
             log.info("Disabling authentication and authorization for REST API");
             deployment.getProviderFactory().registerProviderInstance(new AllowAllAuthInterceptor());

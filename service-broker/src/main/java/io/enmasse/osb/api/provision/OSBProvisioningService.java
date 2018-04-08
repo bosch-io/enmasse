@@ -17,26 +17,24 @@ import javax.ws.rs.core.SecurityContext;
 
 import io.enmasse.address.model.AddressSpaceType;
 import io.enmasse.address.model.Endpoint;
-import io.enmasse.controller.api.ResourceVerb;
-import io.enmasse.controller.api.osb.v2.*;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.auth.ResourceVerb;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.address.model.AddressSpace;
 import io.enmasse.osb.api.EmptyResponse;
 import io.enmasse.api.common.Exceptions;
 import io.enmasse.osb.api.OSBServiceBase;
-import io.enmasse.osb.api.ServiceMapping;
 import io.enmasse.osb.api.catalog.Plan;
 import io.enmasse.osb.api.catalog.Service;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
-import io.fabric8.kubernetes.api.model.Secret;
 
 @Path(OSBServiceBase.BASE_URI + "/service_instances/{instanceId}")
 @Consumes({MediaType.APPLICATION_JSON})
 @Produces({MediaType.APPLICATION_JSON})
 public class OSBProvisioningService extends OSBServiceBase {
 
-    public OSBProvisioningService(AddressSpaceApi addressSpaceApi, Kubernetes kubernetes, ServiceMapping serviceMapping) {
-        super(addressSpaceApi, kubernetes, serviceMapping);
+    public OSBProvisioningService(AddressSpaceApi addressSpaceApi, AuthApi authApi, SchemaProvider schemaProvider) {
+        super(addressSpaceApi, authApi, schemaProvider);
     }
 
     @PUT
@@ -52,9 +50,6 @@ public class OSBProvisioningService extends OSBServiceBase {
         if(originatingIdentity != null && originatingIdentity.split(" +").length>1) {
             log.info("identity: " + new String(Base64.getDecoder().decode(originatingIdentity.split(" +")[1])), StandardCharsets.UTF_8);
         }
-        Optional<Secret> keycloakCreds = getKubernetes().getSecret("keycloak-credentials");
-        keycloakCreds.ifPresent(secret -> log.info("keycloak creds: " + secret.getData()));
-
 
         if (!acceptsIncomplete) {
             throw Exceptions.unprocessableEntityException("AsyncRequired", "This service plan requires client support for asynchronous service operations.");

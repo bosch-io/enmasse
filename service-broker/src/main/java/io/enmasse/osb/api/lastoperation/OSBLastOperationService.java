@@ -4,11 +4,11 @@
  */
 package io.enmasse.osb.api.lastoperation;
 
-import io.enmasse.controller.api.ResourceVerb;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.auth.ResourceVerb;
+import io.enmasse.api.common.SchemaProvider;
 import io.enmasse.osb.api.OSBServiceBase;
 import io.enmasse.address.model.AddressSpace;
-import io.enmasse.osb.api.ServiceMapping;
-import io.enmasse.controller.common.Kubernetes;
 import io.enmasse.k8s.api.AddressSpaceApi;
 
 import javax.ws.rs.*;
@@ -23,8 +23,8 @@ import java.util.Collections;
 @Produces({MediaType.APPLICATION_JSON})
 public class OSBLastOperationService extends OSBServiceBase {
 
-    public OSBLastOperationService(AddressSpaceApi addressSpaceApi, Kubernetes kubernetes, ServiceMapping serviceMapping) {
-        super(addressSpaceApi, kubernetes, serviceMapping);
+    public OSBLastOperationService(AddressSpaceApi addressSpaceApi, AuthApi authApi, SchemaProvider schemaProvider) {
+        super(addressSpaceApi, authApi, schemaProvider);
     }
 
     @GET

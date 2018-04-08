@@ -5,30 +5,29 @@
 
 package io.enmasse.osb;
 
-import io.enmasse.address.model.AuthenticationServiceResolver;
-import io.enmasse.address.model.AuthenticationServiceType;
-import io.enmasse.address.model.CertSpec;
+import io.enmasse.api.auth.AuthApi;
+import io.enmasse.api.auth.KubeAuthApi;
 import io.enmasse.api.common.CachingSchemaProvider;
-import io.enmasse.k8s.api.*;
-import io.fabric8.kubernetes.api.model.ConfigMap;
+import io.enmasse.k8s.api.AddressSpaceApi;
+import io.enmasse.k8s.api.ConfigMapAddressSpaceApi;
+import io.enmasse.k8s.api.ConfigMapSchemaApi;
+import io.enmasse.k8s.api.SchemaApi;
 import io.fabric8.openshift.client.DefaultOpenShiftClient;
 import io.fabric8.openshift.client.NamespacedOpenShiftClient;
-import io.vertx.core.*;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
+import io.vertx.core.Vertx;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.time.Clock;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class ServiceBroker extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(ServiceBroker.class.getName());
     private final NamespacedOpenShiftClient controllerClient;
+    private final ServiceBrokerOptions options;
 
     private ServiceBroker(ServiceBrokerOptions options) {
         this.controllerClient = new DefaultOpenShiftClient();
+        this.options = options;
     }
 
     @Override
@@ -38,103 +37,22 @@ public class ServiceBroker extends AbstractVerticle {
         schemaApi.watchSchema(schemaProvider, options.getResyncInterval());
 
         AddressSpaceApi addressSpaceApi = new ConfigMapAddressSpaceApi(controllerClient);
+        AuthApi authApi = new KubeAuthApi(controllerClient, options.getImpersonateUser(), controllerClient.getConfiguration().getOauthToken());
 
-        vertx.deployVerticle(new HTTPServer(addressSpaceApi, serviceMapping, certDir, auth));
-        deployVerticles(startPromise,
-                new Deployment(new HTTPServer(addressSpaceApi, schemaProvider, options.getCertDir(), kubernetes, kubernetes.isRBACEnabled(), resolverFactory), new DeploymentOptions().setWorker(true)));
-    }
-
-    private CertProviderFactory createCertProviderFactory(ControllerOptions options, CertManager certManager) {
-        return new CertProviderFactory() {
-            @Override
-            public CertProvider createProvider(CertSpec certSpec) {
-                if ("wildcard".equals(certSpec.getProvider())) {
-                    String secretName = options.getWildcardCertSecret();
-                    return new WildcardCertProvider(controllerClient, certSpec, secretName);
-                } else {
-                    return new SelfsignedCertProvider(controllerClient, certSpec, certManager);
-                }
-            }
-
-            @Override
-            public String getDefaultProviderName() {
-                return "selfsigned";
-            }
-        };
-    }
-
-    private AuthenticationServiceResolverFactory createResolverFactory(ControllerOptions options) {
-        Map<AuthenticationServiceType, AuthenticationServiceResolver> resolverMap = new HashMap<>();
-        options.getNoneAuthService().ifPresent(authService -> {
-            resolverMap.put(AuthenticationServiceType.NONE, new NoneAuthenticationServiceResolver(authService.getHost(), authService.getAmqpPort()));
-        });
-
-        options.getStandardAuthService().ifPresent(authService -> {
-            ConfigMap config = controllerClient.configMaps().withName(authService.getConfigMap()).get();
-            if (config != null) {
-                resolverMap.put(AuthenticationServiceType.STANDARD, new StandardAuthenticationServiceResolver(
-                        config.getData().get("hostname"),
-                        Integer.parseInt(config.getData().get("port")),
-                        config.getData().get("httpUrl"),
-                        config.getData().get("caSecretName")));
-            } else {
-                log.warn("Skipping standard authentication service: configmap {} not found", authService.getConfigMap());
-            }
-        });
-
-        resolverMap.put(AuthenticationServiceType.EXTERNAL, new ExternalAuthenticationServiceResolver());
-
-
-        return type -> {
-            AuthenticationServiceResolver resolver = resolverMap.get(type);
-            if (resolver == null) {
-                throw new IllegalArgumentException("Unsupported resolver of type " + type);
-            }
-            return resolver;
-        };
-    }
-
-    private void deployVerticles(Future<Void> startPromise, Deployment ... deployments) {
-        List<Future> futures = new ArrayList<>();
-        for (Deployment deployment : deployments) {
-            Future<Void> promise = Future.future();
-            futures.add(promise);
-            vertx.deployVerticle(deployment.verticle, deployment.options, result -> {
-                if (result.succeeded()) {
-                    promise.complete();
-                } else {
-                    promise.fail(result.cause());
-                }
-            });
-        }
-
-        CompositeFuture.all(futures).setHandler(result -> {
-            if (result.succeeded()) {
-                startPromise.complete();
-            } else {
-                startPromise.fail(result.cause());
-            }
-        });
-    }
-
-    private static class Deployment {
-        final Verticle verticle;
-        final DeploymentOptions options;
-
-        private Deployment(Verticle verticle) {
-            this(verticle, new DeploymentOptions());
-        }
-
-        private Deployment(Verticle verticle, DeploymentOptions options) {
-            this.verticle = verticle;
-            this.options = options;
-        }
+        vertx.deployVerticle(new HTTPServer(addressSpaceApi, schemaProvider, authApi, options.getCertDir(), options.getEnableRbac(), options.getKeycloakUrl(), options.getKeycloakAdminUser(), options.getKeycloakAdminPassword()),
+                result -> {
+                    if (result.succeeded()) {
+                        startPromise.complete();
+                    } else {
+                        startPromise.fail(result.cause());
+                    }
+                });
     }
 
     public static void main(String args[]) {
         try {
             Vertx vertx = Vertx.vertx();
-            vertx.deployVerticle(new ServiceBroker(ControllerOptions.fromEnv(System.getenv())));
+            vertx.deployVerticle(new ServiceBroker(ServiceBrokerOptions.fromEnv(System.getenv())));
         } catch (IllegalArgumentException e) {
             System.out.println(String.format("Unable to parse arguments: %s", e.getMessage()));
             System.exit(1);

@@ -4,8 +4,6 @@
  */
 package io.enmasse.api.auth;
 
-import io.fabric8.kubernetes.api.model.Secret;
-
 public interface AuthApi {
     TokenReview performTokenReview(String token);
     SubjectAccessReview performSubjectAccessReview(String user, String namespace, String verb);
